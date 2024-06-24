@@ -16,17 +16,20 @@ public class ChunkStatusMap {
         INSTANCE = new ChunkStatusMap(renderDistance);
     }
 
+    private final int DIAMETER_FACTOR;
     private final Long2ByteOpenHashMap map;
 
     public ChunkStatusMap(int renderDistance) {
         int diameter = renderDistance * 2 + 1;
-        map = new Long2ByteOpenHashMap(diameter * diameter);
+        DIAMETER_FACTOR = diameter * diameter;
+        map = new Long2ByteOpenHashMap(DIAMETER_FACTOR);
         map.defaultReturnValue((byte) 0);
     }
 
     public void updateDistance(int renderDistance) {
         int diameter = renderDistance * 2 + 1;
-        this.map.ensureCapacity(diameter * diameter);
+        DIAMETER_FACTOR = diameter * diameter;
+        this.map.ensureCapacity(DIAMETER_FACTOR);
     }
 
     public void setChunkStatus(int x, int z, byte flag) {
@@ -36,7 +39,8 @@ public class ChunkStatusMap {
         current |= flag;
         map.put(l, current);
 
-        if ((current & CHUNK_READY) == CHUNK_READY)
+        // Verificação otimizada usando diretamente ALL_FLAGS ao invés de CHUNK_READY
+        if ((current & ALL_FLAGS) == ALL_FLAGS)
             updateNeighbours(x, z);
     }
 
@@ -44,8 +48,12 @@ public class ChunkStatusMap {
         long l = ChunkPos.asLong(x, z);
 
         byte current = map.get(l);
-        current = (byte) (current & ~flag);
+        current &= ~flag; // Limpa o bit especificado
         map.put(l, current);
+
+        if (current == 0) {
+            map.remove(l);
+        }
 
         updateNeighbours(x, z);
     }
@@ -55,35 +63,30 @@ public class ChunkStatusMap {
             for (int z1 = z - 1; z1 <= z + 1; ++z1) {
                 if (checkNeighbours(x1, z1)) {
                     map.put(ChunkPos.asLong(x1, z1), ALL_FLAGS);
-                }
-                else {
+                } else {
                     long l = ChunkPos.asLong(x1, z1);
-
                     byte current = map.get(l);
                     byte n = (byte) (current & ~NEIGHBOURS_READY);
-
-                    if (current == 0b0)
+                    if (n == 0) {
                         map.remove(l);
-                    else if (current != n)
+                    } else if (current != n) {
                         map.put(l, n);
+                    }
                 }
             }
         }
     }
 
     public boolean checkNeighbours(int x, int z) {
-        byte flags = CHUNK_READY;
         for (int x1 = x - 1; x1 <= x + 1; ++x1) {
             for (int z1 = z - 1; z1 <= z + 1; ++z1) {
-                flags &= map.get(ChunkPos.asLong(x1, z1));
-
-                if (flags != CHUNK_READY)
+                byte status = map.get(ChunkPos.asLong(x1, z1));
+                if ((status & CHUNK_READY) != CHUNK_READY) {
                     return false;
+                }
             }
         }
         return true;
-
-//        return flags == CHUNK_READY;
     }
 
     public boolean chunkRenderReady(int x, int z) {
@@ -92,7 +95,6 @@ public class ChunkStatusMap {
     }
 
     public void reset() {
-
+        map.clear();
     }
-
 }
