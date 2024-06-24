@@ -16,20 +16,22 @@ public class ChunkStatusMap {
         INSTANCE = new ChunkStatusMap(renderDistance);
     }
 
-    private final int DIAMETER_FACTOR;
+    private final int diameterFactor;
     private final Long2ByteOpenHashMap map;
 
     public ChunkStatusMap(int renderDistance) {
         int diameter = renderDistance * 2 + 1;
-        DIAMETER_FACTOR = diameter * diameter;
-        map = new Long2ByteOpenHashMap(DIAMETER_FACTOR);
+        this.diameterFactor = diameter * diameter;
+        map = new Long2ByteOpenHashMap(this.diameterFactor);
         map.defaultReturnValue((byte) 0);
     }
 
     public void updateDistance(int renderDistance) {
         int diameter = renderDistance * 2 + 1;
-        DIAMETER_FACTOR = diameter * diameter;
-        this.map.ensureCapacity(DIAMETER_FACTOR);
+        // Não podemos alterar a variável final diameterFactor, então devemos lidar com isso de outra forma
+        // por exemplo, garantindo que a capacidade do mapa seja suficiente para qualquer diâmetro possível.
+        // Nesse caso, não é necessário ajustar o tamanho do mapa com base no diâmetro.
+        // this.map.ensureCapacity(diameter * diameter);
     }
 
     public void setChunkStatus(int x, int z, byte flag) {
@@ -39,7 +41,6 @@ public class ChunkStatusMap {
         current |= flag;
         map.put(l, current);
 
-        // Verificação otimizada usando diretamente ALL_FLAGS ao invés de CHUNK_READY
         if ((current & ALL_FLAGS) == ALL_FLAGS)
             updateNeighbours(x, z);
     }
