@@ -7,7 +7,6 @@ import net.minecraft.client.renderer.block.model.BakedQuad;
 import net.minecraft.client.resources.model.BakedModel;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
-import net.minecraft.core.Vec3i;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.level.block.Block;
@@ -27,27 +26,21 @@ import net.vulkanmod.vulkan.util.ColorUtil;
 import org.joml.Vector3f;
 
 import java.util.List;
+import java.util.Random;
 
 public class BlockRenderer {
 
-    static final Direction[] DIRECTIONS = Direction.values();
+    private static final Direction[] DIRECTIONS = Direction.values();
     private static BlockColors blockColors;
 
-    RandomSource randomSource = RandomSource.createNewThreadLocalInstance();
+    private final Random random = new Random();
+    private final Vector3f pos = new Vector3f();
+    private BlockPos.MutableBlockPos mutableBlockPos = new BlockPos.MutableBlockPos();
 
-    Vector3f pos;
-    BlockPos blockPos;
-    BlockPos.MutableBlockPos mutableBlockPos = new BlockPos.MutableBlockPos();
+    private BuilderResources resources;
+    private BlockState blockState;
 
-    BuilderResources resources;
-
-    BlockState blockState;
-
-    public void setResources(BuilderResources resources) {
-        this.resources = resources;
-    }
-
-    final Object2ByteLinkedOpenHashMap<Block.BlockStatePairKey> occlusionCache = new Object2ByteLinkedOpenHashMap<>(2048, 0.25F) {
+    private final Object2ByteLinkedOpenHashMap<Block.BlockStatePairKey> occlusionCache = new Object2ByteLinkedOpenHashMap<>(2048, 0.25F) {
         protected void rehash(int i) {
         }
     };
@@ -61,7 +54,7 @@ public class BlockRenderer {
     }
 
     public void renderBatched(BlockState blockState, BlockPos blockPos, Vector3f pos, TerrainBufferBuilder bufferBuilder) {
-        this.pos = pos;
+        this.pos.set(pos);
         this.blockPos = blockPos;
         this.blockState = blockState;
 
@@ -79,12 +72,9 @@ public class BlockRenderer {
         boolean useAO = Minecraft.useAmbientOcclusion() && blockState.getLightEmission() == 0 && bakedModel.useAmbientOcclusion();
         LightPipeline lightPipeline = useAO ? resources.smoothLightPipeline : resources.flatLightPipeline;
 
-        //noinspection ForLoopReplaceableByForEach
-        for (int i = 0; i < DIRECTIONS.length; ++i) {
-            Direction direction = DIRECTIONS[i];
-
-            randomSource.setSeed(seed);
-            List<BakedQuad> quads = bakedModel.getQuads(blockState, direction, randomSource);
+        for (Direction direction : DIRECTIONS) {
+            random.setSeed(seed);
+            List<BakedQuad> quads = bakedModel.getQuads(blockState, direction, random);
 
             if (!quads.isEmpty()) {
                 mutableBlockPos.setWithOffset(blockPos, direction);
@@ -94,8 +84,8 @@ public class BlockRenderer {
             }
         }
 
-        randomSource.setSeed(seed);
-        List<BakedQuad> quads = bakedModel.getQuads(blockState, null, randomSource);
+        random.setSeed(seed);
+        List<BakedQuad> quads = bakedModel.getQuads(blockState, null, random);
         if (!quads.isEmpty()) {
             renderModelFace(bufferBuilder, quads, lightPipeline, null);
         }
@@ -104,8 +94,7 @@ public class BlockRenderer {
     private void renderModelFace(TerrainBufferBuilder bufferBuilder, List<BakedQuad> quads, LightPipeline lightPipeline, Direction cullFace) {
         QuadLightData quadLightData = resources.quadLightData;
 
-        for (int i = 0; i < quads.size(); ++i) {
-            BakedQuad bakedQuad = quads.get(i);
+        for (BakedQuad bakedQuad : quads) {
             QuadView quadView = (QuadView) bakedQuad;
             lightPipeline.calculate(quadView, blockPos, quadLightData, cullFace, bakedQuad.getDirection(), bakedQuad.isShade());
             putQuadData(bufferBuilder, quadView, quadLightData);
@@ -145,18 +134,15 @@ public class BlockRenderer {
             final float y = pos.y() + quad.getY(idx);
             final float z = pos.z() + quad.getZ(idx);
 
-            final float r, g, b;
-            final float quadR, quadG, quadB;
-
             final int quadColor = quad.getColor(idx);
-            quadR = ColorUtil.RGBA.unpackR(quadColor);
-            quadG = ColorUtil.RGBA.unpackG(quadColor);
-            quadB = ColorUtil.RGBA.unpackB(quadColor);
+            final float quadR = ColorUtil.RGBA.unpackR(quadColor);
+            final float quadG = ColorUtil.RGBA.unpackG(quadColor);
+            final float quadB = ColorUtil.RGBA.unpackB(quadColor);
 
             final float brightness = brightnessArr[idx];
-            r = quadR * brightness * red;
-            g = quadG * brightness * green;
-            b = quadB * brightness * blue;
+            final float r = quadR * brightness * red;
+            final float g = quadG * brightness * green;
+            final float b = quadB * brightness * blue;
 
             final int color = ColorUtil.RGBA.pack(r, g, b, 1.0f);
             final int light = lights[idx];
@@ -167,7 +153,6 @@ public class BlockRenderer {
 
             idx = (idx + 1) & 0b11;
         }
-
     }
 
     public boolean shouldRenderFace(BlockState blockState, Direction direction, BlockPos adjPos) {
@@ -213,4 +198,3 @@ public class BlockRenderer {
         return true;
     }
 }
-
