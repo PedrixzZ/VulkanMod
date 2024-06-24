@@ -22,45 +22,39 @@ import java.nio.FloatBuffer;
 
 public abstract class VRenderSystem {
     private static long window;
+    private static final float[] clearColor = new float[4];
+    private static final float[] depthBias = new float[2];
 
+    // Pipeline state constants
     public static boolean depthTest = true;
     public static boolean depthMask = true;
     public static int depthFun = 515;
     public static int topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
     public static int polygonMode = VK_POLYGON_MODE_FILL;
     public static boolean canSetLineWidth = false;
-
     public static int colorMask = PipelineState.ColorMask.getColorMask(true, true, true, true);
-
     public static boolean cull = true;
-
     public static boolean logicOp = false;
     public static int logicOpFun = 0;
 
+    // Buffers
+    public static final FloatBuffer clearColorBuffer = MemoryUtil.memCallocFloat(4);
+    public static final MappedBuffer modelViewMatrix = new MappedBuffer(16 * 4);
+    public static final MappedBuffer projectionMatrix = new MappedBuffer(16 * 4);
+    public static final MappedBuffer MVP = new MappedBuffer(16 * 4);
+    public static final MappedBuffer ChunkOffset = new MappedBuffer(3 * 4);
+    public static final MappedBuffer lightDirection0 = new MappedBuffer(3 * 4);
+    public static final MappedBuffer lightDirection1 = new MappedBuffer(3 * 4);
+    public static final MappedBuffer shaderColor = new MappedBuffer(4 * 4);
+    public static final MappedBuffer shaderFogColor = new MappedBuffer(4 * 4);
+    public static final MappedBuffer screenSize = new MappedBuffer(2 * 4);
+
+    // Constants
     public static final float clearDepth = 1.0f;
-    public static FloatBuffer clearColor = MemoryUtil.memCallocFloat(4);
-
-    public static MappedBuffer modelViewMatrix = new MappedBuffer(16 * 4);
-    public static MappedBuffer projectionMatrix = new MappedBuffer(16 * 4);
-    public static MappedBuffer TextureMatrix = new MappedBuffer(16 * 4);
-    public static MappedBuffer MVP = new MappedBuffer(16 * 4);
-
-    public static MappedBuffer ChunkOffset = new MappedBuffer(3 * 4);
-    public static MappedBuffer lightDirection0 = new MappedBuffer(3 * 4);
-    public static MappedBuffer lightDirection1 = new MappedBuffer(3 * 4);
-
-    public static MappedBuffer shaderColor = new MappedBuffer(4 * 4);
-    public static MappedBuffer shaderFogColor = new MappedBuffer(4 * 4);
-
-    public static MappedBuffer screenSize = new MappedBuffer(2 * 4);
-
     public static float alphaCutout = 0.0f;
-
-    private static final float[] depthBias = new float[2];
 
     public static void initRenderer() {
         RenderSystem.assertInInitPhase();
-
         Vulkan.initVulkan(window);
     }
 
@@ -71,7 +65,6 @@ public abstract class VRenderSystem {
 
     public static void updateScreenSize() {
         Window window = Minecraft.getInstance().getWindow();
-
         screenSize.putFloat(0, (float) window.getWidth());
         screenSize.putFloat(4, (float) window.getHeight());
     }
@@ -89,24 +82,14 @@ public abstract class VRenderSystem {
     }
 
     public static void applyMVP(Matrix4f MV, Matrix4f P) {
-        applyModelViewMatrix(MV);
-        applyProjectionMatrix(P);
+        MV.get(modelViewMatrix.buffer);
+        P.get(projectionMatrix.buffer);
         calculateMVP();
     }
 
-    public static void applyModelViewMatrix(Matrix4f mat) {
-        mat.get(modelViewMatrix.buffer.asFloatBuffer());
-        //MemoryUtil.memPutFloat(MemoryUtil.memAddress(modelViewMatrix), 1);
-    }
-
-    public static void applyProjectionMatrix(Matrix4f mat) {
-        mat.get(projectionMatrix.buffer.asFloatBuffer());
-    }
-
     public static void calculateMVP() {
-        org.joml.Matrix4f MV = new org.joml.Matrix4f(modelViewMatrix.buffer.asFloatBuffer());
-        org.joml.Matrix4f P = new org.joml.Matrix4f(projectionMatrix.buffer.asFloatBuffer());
-
+        Matrix4f MV = new Matrix4f(modelViewMatrix.buffer);
+        Matrix4f P = new Matrix4f(projectionMatrix.buffer);
         P.mul(MV).get(MVP.buffer);
     }
 
@@ -131,10 +114,9 @@ public abstract class VRenderSystem {
     }
 
     public static void setChunkOffset(float f1, float f2, float f3) {
-        long ptr = ChunkOffset.ptr;
-        VUtil.UNSAFE.putFloat(ptr, f1);
-        VUtil.UNSAFE.putFloat(ptr + 4, f2);
-        VUtil.UNSAFE.putFloat(ptr + 8, f3);
+        ChunkOffset.putFloat(0, f1);
+        ChunkOffset.putFloat(4, f2);
+        ChunkOffset.putFloat(8, f3);
     }
 
     public static void setShaderColor(float f1, float f2, float f3, float f4) {
@@ -153,15 +135,18 @@ public abstract class VRenderSystem {
         return shaderFogColor;
     }
 
-    public static void clearColor(float f1, float f2, float f3, float f4) {
-        ColorUtil.setRGBA_Buffer(clearColor, f1, f2, f3, f4);
+    public static void clearColor(float r, float g, float b, float a) {
+        clearColor[0] = r;
+        clearColor[1] = g;
+        clearColor[2] = b;
+        clearColor[3] = a;
     }
 
     public static void clear(int v) {
         Renderer.clearAttachments(v);
     }
 
-    // Pipeline state
+    // Pipeline state methods
 
     public static void disableDepthTest() {
         depthTest = false;
@@ -172,18 +157,18 @@ public abstract class VRenderSystem {
     }
 
     public static void setPrimitiveTopologyGL(final int mode) {
-        VRenderSystem.topology = switch (mode) {
-            case GL11.GL_LINES, GL11.GL_LINE_STRIP  -> VK_PRIMITIVE_TOPOLOGY_LINE_LIST;
-            case GL11.GL_TRIANGLE_FAN, GL11.GL_TRIANGLES, GL11.GL_TRIANGLE_STRIP -> VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+        switch (mode) {
+            case GL11.GL_LINES, GL11.GL_LINE_STRIP -> topology = VK_PRIMITIVE_TOPOLOGY_LINE_LIST;
+            case GL11.GL_TRIANGLE_FAN, GL11.GL_TRIANGLES, GL11.GL_TRIANGLE_STRIP -> topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
             default -> throw new RuntimeException(String.format("Unknown GL primitive topology: %s", mode));
         };
     }
 
     public static void setPolygonModeGL(final int mode) {
-        VRenderSystem.polygonMode = switch (mode) {
-            case GL11.GL_POINT -> VK_POLYGON_MODE_POINT;
-            case GL11.GL_LINE -> VK_POLYGON_MODE_LINE;
-            case GL11.GL_FILL -> VK_POLYGON_MODE_FILL;
+        switch (mode) {
+            case GL11.GL_POINT -> polygonMode = VK_POLYGON_MODE_POINT;
+            case GL11.GL_LINE -> polygonMode = VK_POLYGON_MODE_LINE;
+            case GL11.GL_FILL -> polygonMode = VK_POLYGON_MODE_FILL;
             default -> throw new RuntimeException(String.format("Unknown GL polygon mode: %s", mode));
         };
     }
@@ -196,10 +181,6 @@ public abstract class VRenderSystem {
 
     public static void colorMask(boolean b, boolean b1, boolean b2, boolean b3) {
         colorMask = PipelineState.ColorMask.getColorMask(b, b1, b2, b3);
-    }
-
-    public static int getColorMask() {
-        return colorMask;
     }
 
     public static void enableDepthTest() {
@@ -266,5 +247,4 @@ public abstract class VRenderSystem {
     public static void disablePolygonOffset() {
         Renderer.setDepthBias(0.0F, 0.0F);
     }
-
 }
